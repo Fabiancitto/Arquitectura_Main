@@ -38,19 +38,11 @@ class PagoRequest(BaseModel):
     periodo: str
     fecha_pago: date
 
-
-try:
-    doc_ref = db.collection("test_collection").document("test_doc")
-    doc_ref.set({"message": "Conexión exitosa"})
-    print("Firebase conectado correctamente.")
-except Exception as e:
-    print(f"Error al conectar a Firebase: {e}")
-
-
 # Endpoint para generar gastos comunes
 @app.post("/generar-gastos/")
 def generar_gastos(request: GenerarGastosRequest):
     gastos_generados = []
+    duplicados = []
     try:
         for depto_id in request.departamentos:
             meses = [request.mes] if request.mes else range(1, 13)
@@ -60,6 +52,7 @@ def generar_gastos(request: GenerarGastosRequest):
                 doc = doc_ref.get()
 
                 if doc.exists:
+                    duplicados.append({"departamento_id": depto_id, "periodo": periodo})
                     continue  # Si ya existe, pasa al siguiente
 
                 gasto = {
@@ -75,7 +68,11 @@ def generar_gastos(request: GenerarGastosRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al generar los gastos: {e}")
     
-    return {"mensaje": "Gastos generados exitosamente", "gastos": gastos_generados}
+    return {
+        "mensaje": "Gastos generados exitosamente",
+        "gastos_generados": gastos_generados,
+        "duplicados": duplicados,
+    }
 
 # Endpoint para registrar un pago
 @app.post("/pagar-gasto/")
@@ -90,7 +87,7 @@ def pagar_gasto(pago: PagoRequest):
         gasto = doc.to_dict()
 
         if gasto["pagado"]:
-            return {"mensaje": "Pago duplicado", "estado": "Pago duplicado"}
+            return {"mensaje": "El gasto ya ha sido pagado", "estado": "Pago duplicado"}
 
         gasto["pagado"] = True
         gasto["fecha_pago"] = pago.fecha_pago.isoformat()
